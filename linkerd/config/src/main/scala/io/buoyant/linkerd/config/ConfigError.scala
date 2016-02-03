@@ -1,10 +1,8 @@
 package io.buoyant.linkerd.config
 
+import com.fasterxml.jackson.core.JsonParseException
 import java.net.InetSocketAddress
 import java.nio.file.InvalidPathException
-
-import cats.data.NonEmptyList
-import com.fasterxml.jackson.core.JsonParseException
 
 trait ConfigError {
   def message: String
@@ -15,8 +13,8 @@ object ConfigError {
    * Attempts to transform a parsing exception into one or more ConfigErrors. Unrecognized
    * exceptions will be re-thrown.
    */
-  def transform(t: Throwable): NonEmptyList[ConfigError] = t match {
-    case jpe: JsonParseException => NonEmptyList(InvalidSyntax(jpe.getMessage))
+  def transform(t: Throwable): Seq[ConfigError] = t match {
+    case jpe: JsonParseException => Seq(InvalidSyntax(jpe.getMessage))
     case _ => throw (t)
   }
 }

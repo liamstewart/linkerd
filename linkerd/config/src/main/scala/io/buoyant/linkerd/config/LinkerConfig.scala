@@ -1,7 +1,7 @@
 package io.buoyant.linkerd.config
 
-import cats.data.Validated._
-import cats.data.ValidatedNel
+import io.buoyant.linkerd.config.validation.{ValidationUtils, Validated}
+import io.buoyant.linkerd.config.validation.Validated._
 
 trait LinkerConfig {
   def baseDtab: Option[String]
@@ -10,20 +10,17 @@ trait LinkerConfig {
   def failFast: Option[Boolean]
 
   // Currently, the only thing we require of a Linker is that it has at least one Router configured.
-  def validated: ValidatedNel[ConfigError, LinkerConfig.Validated] = {
-    import cats.syntax.cartesian._
-    import cats.syntax.traverse._
-    import cats.std.list._
+  def validated: Validated[ConfigError, LinkerConfig.Validated] = {
     def validatedRouters = routers
       .filter { _.nonEmpty }
       .map(RouterConfig.validateRouters(this))
-      .getOrElse(invalidNel[ConfigError, Seq[RouterConfig.Validated]](NoRoutersSpecified))
-    def validatedNamers: ValidatedNel[ConfigError, Seq[NamerConfig.Validated]] =
-      namers.getOrElse(Nil).map { _.withDefaults(this).validated }.toList.sequenceU
-
-    (validatedRouters |@| validatedNamers).map {
-      new LinkerConfig.Validated(this, _, _)
+      .getOrElse(invalid[ConfigError, Seq[RouterConfig.Validated]](NoRoutersSpecified))
+    def validatedNamers: Validated[ConfigError, Seq[NamerConfig.Validated]] = {
+      val namerSeq: Seq[Validated[ConfigError, NamerConfig.Validated]] = namers getOrElse Seq.empty[NamerConfig] map { _.withDefaults(this).validated }
+      ValidationUtils.transpose(namerSeq)
     }
+
+    validatedRouters.ap(validatedNamers.map(namers => routers => new LinkerConfig.Validated(this, routers, namers)))
   }
 }
 

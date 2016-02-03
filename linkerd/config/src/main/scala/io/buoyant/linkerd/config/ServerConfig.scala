@@ -2,9 +2,9 @@ package io.buoyant.linkerd.config
 
 import java.net.{InetAddress, InetSocketAddress}
 
-import cats.data.{NonEmptyList, OneAnd, ValidatedNel}
-import cats.data.Validated._
 import com.google.common.net.InetAddresses
+import io.buoyant.linkerd.config.validation.{Validated => CfgValidated, ValidationUtils}
+import io.buoyant.linkerd.config.validation.Validated._
 
 trait ServerConfig {
   def ip: Option[String]
@@ -33,7 +33,7 @@ object ServerConfig {
 
     def validPort(port: Int): Boolean = MinValue <= port && port <= MaxValue
 
-    def validated(others: Seq[Defaults]): ValidatedNel[ConfigError, Validated] = {
+    def validated(others: Seq[Defaults]): CfgValidated[ConfigError, Validated] = {
       // TODO: unify this with code in Server.scala
       def conflicts(other: Defaults) = {
         val addr0 = other.addr
@@ -47,13 +47,10 @@ object ServerConfig {
 
       port match {
         case Some(p) if !validPort(p) =>
-          invalidNel(InvalidPort(p))
+          invalid(InvalidPort(p))
         case _ =>
           val allConflicts: Seq[ConflictingPorts] = others flatMap conflicts
-          allConflicts match {
-            case c :: cs => invalid(NonEmptyList(c, cs))
-            case _ => valid(new Validated(this))
-          }
+          if (allConflicts.isEmpty) valid(new Validated(this)) else invalid(allConflicts)
       }
     }
   }
@@ -66,10 +63,8 @@ object ServerConfig {
     servers: Seq[ServerConfig],
     router: RouterConfig.Defaults,
     previousServers: Seq[ServerConfig.Defaults]
-  ): ValidatedNel[ConfigError, Seq[ServerConfig.Validated]] = {
-    import cats.std.list._
-    import cats.syntax.traverse._
-    servers.map(_.withDefaults(router).validated(previousServers)).toList.sequenceU
+  ): CfgValidated[ConfigError, Seq[ServerConfig.Validated]] = {
+    ValidationUtils.transpose(servers.map(_.withDefaults(router).validated(previousServers)))
   }
 }
 

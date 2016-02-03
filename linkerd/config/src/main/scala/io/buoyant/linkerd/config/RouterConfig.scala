@@ -1,10 +1,9 @@
 package io.buoyant.linkerd.config
 
-import cats.data.{NonEmptyList, ValidatedNel}
-import cats.data.Validated._
-
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.twitter.finagle.{Dtab, Stack}
+import io.buoyant.linkerd.config.validation.{Validated => CfgValidated}
+import io.buoyant.linkerd.config.validation.Validated._
 
 /*
  * RouterConfig implements the generic configuration for a [[Router]]. All
@@ -55,33 +54,28 @@ trait RouterConfig {
 
 trait RouterProtocol {
   def name: String
-  def validated: ValidatedNel[ConfigError, RouterProtocol]
+  def validated: CfgValidated[ConfigError, RouterProtocol]
 }
 
 object RouterConfig {
-  import cats.syntax.cartesian._
-  import cats.std.list._
-
   class Defaults(base: RouterConfig, protocol: RouterProtocol, linker: LinkerConfig) {
     def label: String = base.label getOrElse protocol.name
     def failFast: Boolean = base.failFast orElse linker.failFast getOrElse false
     def baseDtab: String = base.baseDtab orElse linker.baseDtab getOrElse ""
     def servers: Seq[ServerConfig] = base.servers getOrElse Seq(base.defaultServer)
 
-    def validated(others: Seq[RouterConfig.Defaults]): ValidatedNel[ConfigError, RouterConfig.Validated] = {
-
-
-      def validatedBaseDtab: ValidatedNel[ConfigError, Dtab] = {
+    def validated(others: Seq[RouterConfig.Defaults]): CfgValidated[ConfigError, RouterConfig.Validated] = {
+      def validatedBaseDtab: CfgValidated[ConfigError, Dtab] = {
         try {
           valid(Dtab.read(baseDtab))
         } catch {
-          case ex: IllegalArgumentException => invalidNel(InvalidDtab(baseDtab, ex))
+          case ex: IllegalArgumentException => invalid(InvalidDtab(baseDtab, ex))
         }
       }
 
-      def validatedLabel: ValidatedNel[ConfigError, String] =
+      def validatedLabel: CfgValidated[ConfigError, String] =
         if (others.exists(_.label == label))
-          invalidNel(ConflictingLabels(label))
+          invalid(ConflictingLabels(label))
         else
           valid(label)
 
@@ -92,12 +86,16 @@ object RouterConfig {
         server <- router.servers
       } yield server.withDefaults(this)
 
-      (validatedLabel |@|
-        validatedBaseDtab |@|
-        protocol.validated |@|
-        ServerConfig.validateServers(servers, this, prevServers)).map {
-          case (l, dt, pr, srv) => new Validated(l, failFast, dt, pr, srv)
-        }
+      validatedLabel.ap(
+        validatedBaseDtab.ap(
+          protocol.validated.ap(
+            ServerConfig.validateServers(servers, this, prevServers).map {
+              srv => { pr => { dt => { l => new Validated(l, failFast, dt, pr, srv) } } }
+            }
+          )
+        )
+      )
+
     }
   }
 
@@ -109,12 +107,11 @@ object RouterConfig {
     val servers: Seq[ServerConfig.Validated]
   )
 
-  def validateRouters(linker: LinkerConfig)(routers: Seq[RouterConfig]): ValidatedNel[ConfigError, Seq[RouterConfig.Validated]] = {
-    // TODO implement, this just gets it compiling
-    val (validatedRouters, _) = routers.foldLeft((valid[ConfigError, Seq[RouterConfig.Validated]](Nil).toValidatedNel, Seq.empty[RouterConfig.Defaults])) {
+  def validateRouters(linker: LinkerConfig)(routers: Seq[RouterConfig]): CfgValidated[ConfigError, Seq[RouterConfig.Validated]] = {
+    val (validatedRouters, _) = routers.foldLeft((valid[ConfigError, Seq[RouterConfig.Validated]](Nil), Seq.empty[RouterConfig.Defaults])) {
       case ((accum, prev), r) =>
         val defaulted = r.withDefaults(linker)
-        ((accum |@| defaulted.validated(prev)).map(_ :+ _), prev :+ defaulted)
+        (accum.ap(defaulted.validated(prev).map(r => { rs => rs :+ r })), prev :+ defaulted)
     }
     validatedRouters
   }

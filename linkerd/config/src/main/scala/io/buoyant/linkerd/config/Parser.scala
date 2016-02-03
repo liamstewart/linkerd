@@ -1,7 +1,5 @@
 package io.buoyant.linkerd.config
 
-import cats.data.{Validated, ValidatedNel}
-import cats.data.Validated._
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -9,6 +7,9 @@ import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import com.twitter.finagle.util.LoadService
 import io.buoyant.linkerd.config.LinkerConfig.Impl
+import io.buoyant.linkerd.config.validation.Validated
+import io.buoyant.linkerd.config.validation.Validated._
+import scala.util.control.NonFatal
 
 trait ConfigRegistrar {
   def register(mapper: ObjectMapper): Unit
@@ -24,15 +25,16 @@ trait ConfigRegistrar {
  */
 case class ParseResult(
   parsedConfig: Option[LinkerConfig],
-  validatedConfig: ValidatedNel[ConfigError, LinkerConfig.Validated]
+  validatedConfig: Validated[ConfigError, LinkerConfig.Validated]
 )
 
 object Parser {
   def apply(s: String): ParseResult = {
-    val baseCfg: ValidatedNel[ConfigError, Impl] = Validated.catchNonFatal {
-      objectMapper(s).readValue[LinkerConfig.Impl](s)
-    }.leftMap(ConfigError.transform)
-
+    val baseCfg: Validated[ConfigError, Impl] = try {
+      valid(objectMapper(s).readValue[LinkerConfig.Impl](s))
+    } catch {
+      case NonFatal(ex) => invalid(ConfigError.transform(ex))
+    }
 
     ParseResult(
       baseCfg.toOption,

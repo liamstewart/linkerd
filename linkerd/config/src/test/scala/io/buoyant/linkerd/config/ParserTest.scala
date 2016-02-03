@@ -2,14 +2,13 @@ package io.buoyant.linkerd.config
 
 import java.net.{InetAddress, InetSocketAddress}
 
-import cats.data.ValidatedNel
-import cats.std.list._
 import com.twitter.finagle.Path
 import io.buoyant.linkerd.config.namers.FileSystemNamerConfig
 import org.scalatest.FunSuite
 import io.buoyant.linkerd.config.http._
 import io.buoyant.linkerd.config.thrift._
-
+import io.buoyant.linkerd.config.validation.Validated
+import io.buoyant.linkerd.config.validation.Validated._
 
 class ParserTest extends FunSuite {
   val YamlConfig = """
@@ -40,8 +39,9 @@ routers:
   val configs: ParseResult = Parser(YamlConfig)
   def baseConfig = configs.parsedConfig.get
   def validatedConfig = configs.validatedConfig.fold(
-    { errs => fail(s"expected config to parse successfully, but got ${errs.unwrap}")},
-    identity)
+    { errs => fail(s"expected config to parse successfully, but got ${errs}") },
+    identity
+  )
 
   test("baseDtab on linker") {
     assert(baseConfig.baseDtab == Some("/foo => /bar ;"))
@@ -90,11 +90,11 @@ routers:
 
   // validation tests begin here
 
-  def extractErrors(cfg: ValidatedNel[ConfigError, LinkerConfig.Validated]): List[ConfigError] =
+  def extractErrors(cfg: Validated[ConfigError, LinkerConfig.Validated]): Seq[ConfigError] =
     cfg.fold(
       identity,
       { _ => fail("error expected") }
-    ).unwrap
+    )
 
   test("invalid json") {
     val invalidJson = "{ whoa }"
