@@ -1,3 +1,4 @@
+import bintray.BintrayKeys._
 import com.typesafe.sbt.SbtScalariform.{scalariformSettings => baseScalariformSettings, _}
 import sbt._
 import sbt.Keys._
@@ -30,7 +31,10 @@ class Base extends Build {
   val orgSettings = Seq(
     organization := "io.buoyant",
     version := Git.version,
-    homepage := Some(url("https://linkerd.io"))
+    homepage := Some(url("https://linkerd.io")),
+    licenses += ("Apache-2.0" -> url("https://opensource.org/licenses/Apache-2.0")),
+    bintrayOrganization := Some("buoyantio"),
+    bintrayReleaseOnPublish in ThisBuild := false
   )
 
   val scalaSettings = Seq(

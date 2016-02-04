@@ -13,5 +13,8 @@ addSbtPlugin("com.eed3si9n"      % "sbt-unidoc"    % "0.3.3")
 addSbtPlugin("com.eed3si9n"      % "sbt-assembly"  % "0.14.1")
 addSbtPlugin("se.marcuslonnberg" % "sbt-docker"    % "1.2.0")
 
+// publishing
+addSbtPlugin("me.lessis"         % "bintray-sbt"   % "0.3.0")
+
 // scrooge
 addSbtPlugin("com.twitter" %% "scrooge-sbt-plugin" % "4.1.0")
