@@ -1,8 +1,13 @@
 package io.buoyant.linkerd
 package protocol
 
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.jsontype.NamedType
 import com.twitter.finagle.Path
+import com.twitter.finagle.Stack.Params
 import com.twitter.finagle.Thrift.param
+import io.buoyant.linkerd.config.Parser
 import io.buoyant.router.{Thrift, RoutingFactory}
 
 class ThriftInitializer extends ProtocolInitializer {
@@ -18,17 +23,36 @@ class ThriftInitializer extends ProtocolInitializer {
 
   protected val adapter = Thrift.Router.IngestingFilter
   protected val defaultServer = Thrift.server
-    .configured(Server.Port(4114))
 
-  val Framed = Parsing.Param.Boolean("thriftFramed") { framed =>
-    param.Framed(framed)
-  }
+  override def defaultServerPort: Int = 4114
 
-  val MethodInDst = Parsing.Param.Boolean("thriftMethodInDst") { methodInDst =>
-    Thrift.param.MethodInDst(methodInDst)
-  }
+  override def registerSubtypes(mapper: ObjectMapper): Unit =
+    mapper.registerSubtypes(new NamedType(Parser.jClass[ThriftConfig], "thrift"))
+}
 
-  override val routerParamsParser = MethodInDst
-  override val serverParamsParser = Framed
-  override val clientParamsParser = Framed
+object ThriftInitializer extends ThriftInitializer
+
+case class ThriftConfig(
+  thriftMethodInDst: Option[Boolean]
+) extends RouterConfig {
+
+  var servers: Seq[ThriftServerConfig] = Nil
+  var client: Option[ThriftClientConfig] = None
+
+  @JsonIgnore
+  override def protocol = ThriftInitializer
+
+  override def routerParams = super.routerParams
+    .maybeWith(thriftMethodInDst.map(Thrift.param.MethodInDst(_)))
+}
+
+case class ThriftServerConfig(thriftFramed: Option[Boolean]) extends ServerConfig {
+  @JsonIgnore override protected def serverParams: Params = super.serverParams
+    .maybeWith(thriftFramed.map(param.Framed(_)))
+}
+
+case class ThriftClientConfig(thriftFramed: Option[Boolean]) extends ClientConfig {
+  @JsonIgnore
+  override def clientParams: Params = super.clientParams
+    .maybeWith(thriftFramed.map(param.Framed(_)))
 }

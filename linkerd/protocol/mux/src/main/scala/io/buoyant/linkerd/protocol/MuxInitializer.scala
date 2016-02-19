@@ -1,7 +1,11 @@
 package io.buoyant.linkerd
 package protocol
 
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.jsontype.NamedType
 import com.twitter.finagle.Path
+import io.buoyant.linkerd.config.Parser
 import io.buoyant.router.{Mux, RoutingFactory}
 
 class MuxInitializer extends ProtocolInitializer.Simple {
@@ -14,5 +18,20 @@ class MuxInitializer extends ProtocolInitializer.Simple {
     .configured(RoutingFactory.DstPrefix(Path.Utf8(name)))
 
   protected val defaultServer = Mux.server
-    .configured(Server.Port(4141))
+
+  override def defaultServerPort: Int = 4141
+
+  override def registerSubtypes(mapper: ObjectMapper): Unit =
+    mapper.registerSubtypes(new NamedType(Parser.jClass[MuxConfig], "mux"))
+}
+
+object MuxInitializer extends MuxInitializer
+
+class MuxConfig extends RouterConfig {
+
+  var servers: Seq[ServerConfig] = Nil
+  var client: Option[ClientConfig] = None
+
+  @JsonIgnore
+  override def protocol = MuxInitializer
 }
